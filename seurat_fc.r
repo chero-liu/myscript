@@ -649,11 +649,6 @@ readH5seurat <- function(input,informat = "h5seurat"){
     return(rds)
 }
 
-saveH5seurat <- function(rds, outdir,update = FALSE,informat = "h5seurat"){
-    rds = OESingleCell::SaveX(rds, output = outdir, update = update, outformat = informat)
-    return(rds)
-}
-
 
 check_and_update_seurat_version <- function(rds) {
   seurat_version <- packageVersion("Seurat")
@@ -1008,12 +1003,12 @@ getClusteringResult <- function(rds, outdir, reduct1 = "pca", reduct2 = "umap", 
     library(dplyr)
     library(ggplot2)
     library(Seurat)
-    
+    library(SummarizedExperiment)
     dim_outdir = file.path(outdir,paste0(reduct1, "_Dimension_Reduction"))
     if ( !dir.exists(dim_outdir) ){
         dir.create(dim_outdir, recursive = T)
     }
-    reduct1_coord = OESingleCell::FetchData(rds, vars = c("rawbc", paste0( Seurat::Key(rds)[reduct1], 1:2))) %>%
+    reduct1_coord = FetchData(rds, vars = c("rawbc", paste0( Seurat::Key(rds)[reduct1], 1:2))) %>%
                     dplyr::rename( "Barcode" = "rawbc")
     write.table( reduct1_coord, file.path(dim_outdir, paste0(reduct1, "_Dimension_Reduction_coordination.csv")),
                 sep = ",", col.names = T, row.names = F, quote = F)
@@ -1021,7 +1016,7 @@ getClusteringResult <- function(rds, outdir, reduct1 = "pca", reduct2 = "umap", 
     if ( !dir.exists(dim_outdir) ){
         dir.create(dim_outdir, recursive = T)
     }
-    reduct2_coord = OESingleCell::FetchData(rds,
+    reduct2_coord = FetchData(rds,
                         vars = c("rawbc", paste0( Seurat::Key(rds)[reduct2], 1:2))) %>%
                         dplyr::rename( "Barcode" = "rawbc")
 
@@ -1044,7 +1039,7 @@ getClusteringResult <- function(rds, outdir, reduct1 = "pca", reduct2 = "umap", 
     cell_count_labels = paste(paste(names(reordered_cell_count_by_cluster),reordered_cell_count_by_cluster,sep="-")," cells")
     ggdimplot = Seurat::DimPlot(object = rds,reduction = reduct2, dims = c(1,2),
                 label = T, group.by= cluster_result_colname,   pt.size = pointsize)
-    custom_cols =  OESingleCell::SelectColors(1:length(unique(Seurat::Idents(rds))), palette = palette)
+    custom_cols =  getColorOrder(rds,'clusters')
 
     ggdimplot = ggdimplot + ggplot2::labs(title = "") + theme(aspect.ratio = 1/1)+
             ggplot2::scale_colour_manual( values = custom_cols,
@@ -1055,14 +1050,14 @@ getClusteringResult <- function(rds, outdir, reduct1 = "pca", reduct2 = "umap", 
     ggplot2::ggsave(file.path(dim_outdir,paste0(reduct2, "_groupby_cluster","_resolution", resolution,"_plot.png",collapse="")),dpi=1000, 
                 plot = ggdimplot, bg="white", width = ifelse(length(unique(Seurat::Idents(rds))) <= 20,7.5,9))
 
-    clustering_df = OESingleCell::colData(rds) %>%
-    dplyr::rename( "Barcode" = "rawbc") %>%
-    dplyr::select( Barcode, sampleid, clusters, group)
+    clustering_df = rds@meta.data %>% 
+    dplyr::rename(Barcode = "rawbc") %>% 
+    dplyr::select(Barcode, sampleid, clusters, group)
     write.table(clustering_df, quote = F,sep =",",row.names = F,
                 file.path(outdir,paste0("clustering_results.csv",collapse = "")))
                 
     if (saveRDS){
-        saveH5seurat(rds, outdir)
+        saveRDS(rds, paste0(outdir,'/data_ob.rds'))
     }
 }
 
@@ -1110,7 +1105,22 @@ getManualannoResult <- function(rds,outdir,useCol="new_celltype",addFreqCount="n
         gg = gg + NoLegend()
     }
 
-    OESingleCell::save_ggplots(file.path(outdir,useCol), gg, width = max(nchar( as.vector(unique(rds@meta.data[,useCol]))))/15+7, dpi = 300,limitsize = F, bg="white")
+    width_value <- max(nchar(as.vector(unique(rds@meta.data[,useCol])))) / 15 + 7
+
+    # 构建完整文件路径
+    file_path <- file.path(outdir, paste0(useCol, ".png"))
+
+    # 使用 ggsave 保存
+    ggsave(
+      filename = file_path,  # 文件路径
+      plot = gg,             # ggplot 对象
+      width = width_value,   # 宽度（英寸）
+      height = width_value * 0.75,  # 高度，通常设置为宽度的0.75倍
+      dpi = 300,             # 分辨率
+      limitsize = FALSE,     # 不限制图像大小
+      bg = "white"           # 背景颜色
+    )
+
 
     simplified_meta = rds@meta.data %>%
                             dplyr::rename( "Barcode" = "rawbc") %>%
@@ -1119,7 +1129,7 @@ getManualannoResult <- function(rds,outdir,useCol="new_celltype",addFreqCount="n
             file.path(outdir,paste0(useCol,".metadata.csv",collapse = "")))
 
     if (saveRDS=='yes'){
-        saveH5seurat(rds, outdir)
+        saveRDS(rds, paste0(outdir,'/data_ob.rds'))
     }
 }
 
@@ -1150,7 +1160,6 @@ homologene_seurat_replace <- function(data_ob,assay2use,inTaxidgene,outTaxidgene
 homologene_transformed = function(data_ob,inTaxid,outTaxid,output,assay="RNA",genelist="no"){
     suppressPackageStartupMessages(library("Seurat"))
     suppressPackageStartupMessages(library("homologene"))
-    suppressPackageStartupMessages(library("OESingleCell"))
     assay2use = assay
     counts=data_ob@assays[[assay2use]]@counts
     if(genelist == "no"){
@@ -1178,7 +1187,83 @@ homologene_transformed = function(data_ob,inTaxid,outTaxid,output,assay="RNA",ge
     return(data_ob)
 }
 
-
+# 定义替代函数 - 专门用于读取GTF并提取gene_id和gene_name
+import_gtf_simple <- function(gtf_file, feature_type = "exon") {
+  library(data.table)
+  # 检查文件是否存在
+  if (!file.exists(gtf_file)) {
+    stop("File not found: ", gtf_file)
+  }
+  
+  # 确定是否是压缩文件
+  is_gz <- grepl("\\.gz$", gtf_file)
+  
+  # 构建读取命令
+  if (is_gz) {
+    cmd <- paste("zcat", gtf_file)
+  } else {
+    cmd <- paste("cat", gtf_file)
+  }
+  
+  # 添加过滤注释行的命令
+  cmd <- paste(cmd, "| grep -v '^#'")
+  
+  # 使用fread读取
+  gtf <- fread(cmd = cmd, sep = "\t", header = FALSE, 
+               quote = "", fill = TRUE, na.strings = ".")
+  
+  # 设置列名（标准GTF格式）
+  colnames(gtf) <- c("seqname", "source", "feature", "start", "end", 
+                     "score", "strand", "frame", "attributes")
+  
+  # 将start和end转换为数值
+  gtf[, start := as.numeric(start)]
+  gtf[, end := as.numeric(end)]
+  
+  # 过滤指定的feature类型
+  if (!is.null(feature_type)) {
+    gtf <- gtf[feature %in% feature_type, ]
+  }
+  
+  # 解析attributes列 - 简化版本，只提取gene_id和gene_name
+  parse_gene_info <- function(attr) {
+    gene_id <- NA_character_
+    gene_name <- NA_character_
+    
+    # 查找gene_id
+    gene_id_match <- regmatches(attr, regexpr('gene_id\\s+"[^"]+"', attr))
+    if (length(gene_id_match) > 0) {
+      gene_id <- gsub('gene_id\\s+"|"', '', gene_id_match[1])
+    }
+    
+    # 查找gene_name
+    gene_name_match <- regmatches(attr, regexpr('gene_name\\s+"[^"]+"', attr))
+    if (length(gene_name_match) > 0) {
+      gene_name <- gsub('gene_name\\s+"|"', '', gene_name_match[1])
+    }
+    
+    # 如果gene_name不存在，尝试其他可能的字段
+    if (is.na(gene_name)) {
+      # 尝试gene_symbol
+      gene_symbol_match <- regmatches(attr, regexpr('gene_symbol\\s+"[^"]+"', attr))
+      if (length(gene_symbol_match) > 0) {
+        gene_name <- gsub('gene_symbol\\s+"|"', '', gene_symbol_match[1])
+      }
+    }
+    
+    return(list(gene_id = gene_id, gene_name = gene_name))
+  }
+  
+  # 解析所有行的gene信息
+  gene_info <- lapply(gtf$attributes, parse_gene_info)
+  
+  # 添加到数据框
+  gtf[, gene_id := sapply(gene_info, function(x) x$gene_id)]
+  gtf[, gene_name := sapply(gene_info, function(x) x$gene_name)]
+  
+  # 转换为data.frame并返回
+  return(as.data.frame(gtf))
+}
 #-----------------mix_Species_Split-------------------------
 # Helper function to read and preprocess GEM classification data
 read_and_preprocess_gem_classification <- function(sample, input_dir) {
