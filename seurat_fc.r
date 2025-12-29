@@ -1062,7 +1062,7 @@ getClusteringResult <- function(rds, outdir, reduct1 = "pca", reduct2 = "umap", 
 }
 
 getManualannoResult <- function(rds,outdir,useCol="new_celltype",addFreqCount="no", saveRDS = 'yes',label = FALSE, legend = 'yes',orderbyFreq = "yes",reduct = "umap",palette="customecol2",pointsize=0.5){
-    source("/home/liuchenglong/script/Get_colors.R")
+    source("/home/chenglong.liu/RaD/myscript/Get_colors.R")
     library(dplyr)
     library(ggplot2)
     library(stringr)
@@ -1108,11 +1108,22 @@ getManualannoResult <- function(rds,outdir,useCol="new_celltype",addFreqCount="n
     width_value <- max(nchar(as.vector(unique(rds@meta.data[,useCol])))) / 15 + 7
 
     # 构建完整文件路径
-    file_path <- file.path(outdir, paste0(useCol, ".png"))
+    file_path <- file.path(outdir, paste0(useCol))
 
     # 使用 ggsave 保存
     ggsave(
-      filename = file_path,  # 文件路径
+      filename = paste0(file_path,'.png'),  # 文件路径
+      plot = gg,             # ggplot 对象
+      width = width_value,   # 宽度（英寸）
+      height = width_value * 0.75,  # 高度，通常设置为宽度的0.75倍
+      dpi = 300,             # 分辨率
+      limitsize = FALSE,     # 不限制图像大小
+      bg = "white"           # 背景颜色
+    )
+
+    # 使用 ggsave 保存
+    ggsave(
+      filename = paste0(file_path,'.pdf'),  # 文件路径
       plot = gg,             # ggplot 对象
       width = width_value,   # 宽度（英寸）
       height = width_value * 0.75,  # 高度，通常设置为宽度的0.75倍
